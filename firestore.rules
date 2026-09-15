@@ -1,0 +1,52 @@
+rules_version = '2';
+
+/* Macro Tracker security rules.
+ *
+ * This is the app's ENTIRE security boundary. The repo is public and the
+ * Firebase apiKey is committed (which is fine — Google documents a web apiKey
+ * as an identifier, not a credential), so anyone can load the page and sign in
+ * with any Google account. These rules are what stop them seeing anything.
+ *
+ * That is why the owner's uid is hardcoded rather than using the usual
+ * self-service `request.auth.uid == uid` pattern: self-service would give every
+ * stranger their own private corner of YOUR database and YOUR free quota.
+ *
+ * Setup order matters. Publish this file with the placeholder still in place,
+ * BEFORE putting any data in. Everything is denied, but Firebase Auth works
+ * independently of Firestore rules, so you can still sign in — and the app's
+ * first-run screen will show you the uid to paste in here.
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Replace this with your own uid. ───────────────────────────────────
+    // Firebase console -> Authentication -> Users -> "User UID",
+    // or just read it off the app's first-run screen, which has a Copy button.
+    function ownerUid() {
+      return 'PASTE_YOUR_FIREBASE_UID_HERE';
+    }
+
+    function isOwner() {
+      return request.auth != null
+          && request.auth.uid == ownerUid()
+          && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    // Profile, days, foods and meals all live under the owner's subtree.
+    // The `uid == ownerUid()` half is redundant given the check above, but it
+    // costs nothing and means even a mistyped client path cannot write outside.
+    match /users/{uid}/{document=**} {
+      allow read, write: if isOwner() && uid == ownerUid();
+    }
+
+    // Everything else falls through to Firestore's default deny.
+    //
+    // This block is documentation, not enforcement: in Firestore rules a
+    // `false` CANNOT revoke an `allow` granted by another matching block. Never
+    // rely on a trailing deny to "lock down" a path you opened up above.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>preview</title>
+<link rel="stylesheet" href="../../css/app.css">
+<script type="importmap">
+{ "imports": { "/js/firebase.js": "/test/harness/mock-firebase.js", "/js/store.js": "/test/harness/mock-store.js" } }
+</script></head>
+<body>
+<div id="app"><main id="view" class="view"></main>
+<nav id="tabbar" class="tabbar">
+  <a class="tab" href="#/entry" data-tab="entry" aria-current="page"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span>Entry</span></a>
+  <a class="tab" href="#/viewer" data-tab="viewer"><svg viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 19v-6M13 19V9M18 19v-3"/></svg><span>Viewer</span></a>
+  <a class="tab" href="#/settings" data-tab="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg><span>Settings</span></a>
+</nav></div>
+<div id="sheet-root"></div><div id="toast-root" class="toast-root"></div>
+<script type="module">
+const page = new URLSearchParams(location.search).get('p') || 'entry';
+const { setState } = await import('../../js/state.js');
+const ms = await import('/js/store.js');
+const { localDayKey } = await import('../../js/dates.js');
+const { sumEntries } = await import('../../js/macros.js');
+setState({
+  user: { uid: 'abc123uid', email: 'you@example.com', providerData: [{ providerId: 'google.com' }] },
+  profile: ms.blankProfile(),
+  dayKey: localDayKey(new Date(), 'America/Chicago'),
+  today: { date: 'x', weightLb: 182.4, entries: ms.ENTRIES, totals: sumEntries(ms.ENTRIES) },
+  foods: ms.FOODS, meals: ms.MEALS, ready: true, pending: false,
+});
+const view = document.getElementById('view');
+const mod = page === 'viewer' ? await import('../../js/ui/viewerPage.js')
+          : page === 'settings' ? await import('../../js/ui/settingsPage.js')
+          : await import('../../js/ui/entryPage.js');
+mod.render(view);
+if (page === 'sheet') { (await import('../../js/ui/addFoodSheet.js')).openAddFood(); }
+document.querySelectorAll('.tab').forEach(t => t.removeAttribute('aria-current'));
+document.querySelector(`[data-tab="${page==='sheet'?'entry':page}"]`)?.setAttribute('aria-current','page');
+</script></body></html>

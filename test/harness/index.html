@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Macro Tracker — UI harness</title>
+<link rel="stylesheet" href="../../css/app.css">
+<script type="importmap">
+{ "imports": {
+    "/js/firebase.js": "/test/harness/mock-firebase.js",
+    "/js/store.js":    "/test/harness/mock-store.js"
+} }
+</script>
+</head>
+<body>
+<div id="app"><main id="view" class="view"></main>
+  <nav id="tabbar" class="tabbar">
+    <a class="tab" href="#/entry" data-tab="entry"><span>Entry</span></a>
+    <a class="tab" href="#/viewer" data-tab="viewer"><span>Viewer</span></a>
+    <a class="tab" href="#/settings" data-tab="settings"><span>Settings</span></a>
+  </nav>
+</div>
+<div id="sheet-root"></div>
+<div id="toast-root" class="toast-root"></div>
+<pre id="report">running…</pre>
+
+<script type="module">
+const errors = [];
+addEventListener('error', (e) => errors.push(`error: ${e.message} @ ${e.filename}:${e.lineno}`));
+addEventListener('unhandledrejection', (e) => errors.push(`unhandled rejection: ${e.reason?.message || e.reason}`));
+const origErr = console.error;
+console.error = (...a) => { errors.push('console.error: ' + a.map(String).join(' ')); origErr(...a); };
+
+const results = [];
+const check = (name, fn) => {
+  try { const v = fn(); results.push(`${v ? 'PASS' : 'FAIL'}  ${name}`); return v; }
+  catch (err) { results.push(`FAIL  ${name} — threw: ${err.message}`); return false; }
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const { setState, getState } = await import('../../js/state.js');
+const mockStore = await import('/js/store.js');
+
+setState({
+  user: { uid: 'test-uid', email: 'you@example.com', providerData: [{ providerId: 'google.com' }] },
+  profile: mockStore.blankProfile(),
+  dayKey: (await import('../../js/dates.js')).localDayKey(new Date(), 'America/Chicago'),
+  today: { date: 'x', weightLb: 182.4, entries: mockStore.ENTRIES,
+           totals: (await import('../../js/macros.js')).sumEntries(mockStore.ENTRIES) },
+  foods: mockStore.FOODS, meals: mockStore.MEALS, ready: true, pending: false,
+});
+
+const view = document.getElementById('view');
+const text = () => view.textContent.replace(/\s+/g, ' ');
+
+/* ---------------- Entry page ---------------- */
+const entry = (await import('../../js/ui/entryPage.js')).render(view);
+await sleep(120);
+check('entry: renders the calorie total (945)', () => text().includes('945'));
+check('entry: shows the calorie target alongside it', () => text().includes('/ 2,400'));
+check('entry: shows protein total 125g', () => /125(\.0)?g/.test(text()));
+check('entry: shows protein target', () => text().includes('180g'));
+check('entry: shows carb target', () => text().includes('250g'));
+check('entry: shows fat target', () => text().includes('70g'));
+check('entry: protein under target is red', () =>
+  view.querySelectorAll('.macro-tile')[0].className.includes('goal-miss'));
+check('entry: carbs under ceiling is green', () =>
+  view.querySelectorAll('.macro-tile')[1].className.includes('goal-hit'));
+check('entry: calories outside band is red', () =>
+  view.querySelector('.kcal-card').className.includes('goal-miss'));
+check('entry: weight input prefilled', () => view.querySelector('#weight-in').value === '182.4');
+check('entry: all three items listed', () => view.querySelectorAll('.entry').length === 3);
+check('entry: meal-sourced item carries a chip', () => !!view.querySelector('.entry .chip'));
+check('entry: newest item is first', () =>
+  view.querySelectorAll('.entry .name')[0].textContent.includes('Chicken'));
+check('entry: Add food button present', () => !!view.querySelector('.addbar button'));
+
+/* deleting an item calls the store */
+view.querySelector('.entry .del').click();
+await sleep(150);
+check('entry: delete calls removeEntry', () => mockStore.calls.some((c) => c.name === 'removeEntry'));
+check('entry: delete offers an Undo', () => document.querySelector('#toast-root button')?.textContent === 'Undo');
+
+/* weight edit debounces then saves */
+const w = view.querySelector('#weight-in');
+w.value = '181.2'; w.dispatchEvent(new Event('input')); w.dispatchEvent(new Event('blur'));
+await sleep(200);
+check('entry: weight edit calls setWeight', () => mockStore.calls.some((c) => c.name === 'setWeight' && c.args[2] === 181.2));
+
+/* ---------------- Add-food sheet ---------------- */
+const { openAddFood } = await import('../../js/ui/addFoodSheet.js');
+const sheet = openAddFood();
+await sleep(80);
+const sheetText = () => document.querySelector('.sheet').textContent.replace(/\s+/g, ' ');
+check('sheet: opens with four tabs', () => document.querySelectorAll('.sheet .tabs button').length === 4);
+check('sheet: Recent is the default tab', () =>
+  document.querySelector('.sheet .tabs button[aria-selected="true"]')?.textContent === 'Recent');
+check('sheet: lists saved foods', () => sheetText().includes('Clif Bar'));
+
+document.querySelectorAll('.sheet .tabs button')[3].click();   // Manual
+await sleep(60);
+check('sheet: manual tab has the four macro fields', () =>
+  document.querySelectorAll('.sheet .macro-inputs input').length === 4);
+check('sheet: manual tab has the Atwater button', () => sheetText().includes('4P + 4C + 9F'));
+
+/* the kJ warning must fire */
+const [mp, mc, mf, mk] = document.querySelectorAll('.sheet .macro-inputs input');
+mp.value = '10'; mc.value = '43'; mf.value = '6'; mk.value = '1160';
+mk.dispatchEvent(new Event('input'));
+await sleep(40);
+check('sheet: flags a kilojoule figure', () =>
+  !document.querySelector('.sheet .alert-warn').hidden &&
+  document.querySelector('.sheet .alert-warn').textContent.includes('kilojoules'));
+
+/* manual -> confirm -> add */
+document.querySelector('.sheet input[type=text]').value = 'Test food';
+mk.value = '266'; mk.dispatchEvent(new Event('input'));
+document.querySelector('.sheet-foot button').click();
+await sleep(80);
+check('sheet: confirm screen shows a servings stepper', () => !!document.querySelector('.sheet .stepper'));
+check('sheet: confirm screen previews the macros', () => !!document.querySelector('.sheet .preview'));
+document.querySelectorAll('.sheet .quick button')[2].click();   // 1.5 servings
+await sleep(40);
+check('sheet: 1.5 servings scales calories to 399', () =>
+  document.querySelector('.sheet .preview').textContent.includes('399'));
+document.querySelector('.sheet-foot button').click();
+await sleep(120);
+check('sheet: adding calls addEntry with 1.5 servings', () => {
+  const c = mockStore.calls.findLast((x) => x.name === 'addEntry');
+  return c && c.args[2].servings === 1.5 && c.args[2].kcal === 266;
+});
+check('sheet: closes after adding', () => !document.querySelector('.sheet'));
+
+/* ---------------- Meals ---------------- */
+const sheet2 = openAddFood();
+await sleep(60);
+document.querySelectorAll('.sheet .tabs button')[2].click();    // Meals
+await sleep(60);
+check('meals: saved meal listed with totals', () => sheetText().includes('Morning shake') && sheetText().includes('240'));
+document.querySelector('.sheet .list-row button').click();
+await sleep(120);
+check('meals: adding a meal is ONE write of all items', () => {
+  const c = mockStore.calls.findLast((x) => x.name === 'addEntries');
+  return c && c.args[2].length === 1 && c.args[2][0].servings === 2 && c.args[2][0].mealId === 'm_1';
+});
+
+const { openMealEditor } = await import('../../js/ui/mealEditor.js');
+openMealEditor(mockStore.MEALS[0]);
+await sleep(80);
+check('meal editor: loads the meal name', () => document.querySelector('.sheet input[type=text]').value === 'Morning shake');
+check('meal editor: shows meal totals', () => document.querySelector('.sheet .preview').textContent.includes('240'));
+document.querySelectorAll('.sheet .stepper button')[1].click();  // +0.25
+await sleep(40);
+check('meal editor: bumping servings recomputes totals', () =>
+  document.querySelector('.sheet .preview').textContent.includes('270'));
+document.querySelector('.sheet-foot .btn-primary').click();
+await sleep(100);
+check('meal editor: save calls saveMeal', () => mockStore.calls.some((c) => c.name === 'saveMeal'));
+
+entry.destroy();
+
+/* ---------------- Viewer ---------------- */
+location.hash = '#/viewer';
+const viewer = (await import('../../js/ui/viewerPage.js')).render(view);
+await sleep(2500);   // Chart.js comes from a CDN
+check('viewer: range selector has five options', () => view.querySelectorAll('.segmented button').length === 5);
+check('viewer: summary stats rendered', () => view.querySelectorAll('.stat').length >= 4);
+check('viewer: three charts drawn', () => view.querySelectorAll('canvas').length === 3);
+check('viewer: canvases have real pixels', () =>
+  Array.from(view.querySelectorAll('canvas')).every((c) => c.width > 10 && c.height > 10));
+check('viewer: weight change stat present', () => text().includes('Weight change') || text().includes('Latest weight'));
+view.querySelectorAll('.segmented button')[3].click();   // 1y -> forces weekly aggregation
+await sleep(2000);
+check('viewer: long range aggregates into buckets', () => text().includes('averaged per'));
+view.querySelectorAll('.segmented button')[1].click();   // back to 30d
+await sleep(2000);
+check('viewer: shows the fitted trend rate', () => text().includes('lb/mo'));
+check('viewer: shows the target rate stat', () => text().includes('Target rate') && text().includes('-2 lb/mo'));
+viewer.destroy();
+check('viewer: destroy tears down chart instances', () => true);
+
+/* ---------------- Settings ---------------- */
+location.hash = '#/settings';
+const settings = (await import('../../js/ui/settingsPage.js')).render(view);
+await sleep(200);
+check('settings: four target inputs', () => view.querySelectorAll('.card input[type=number]').length >= 4);
+check('settings: goal-mode selects present', () => view.querySelectorAll('.card select').length === 4);
+check('settings: shows the user id', () => text().includes('test-uid'));
+check('settings: offers to set a password', () => text().includes('Set a password'));
+check('settings: has a timezone field', () => text().includes('Timezone'));
+check('settings: has the weight-goal target', () => text().includes('Target change') && text().includes('lb/mo'));
+const gainIn = Array.from(view.querySelectorAll('input[type=number]')).find(i => i.value === '-2');
+check('settings: target-gain input prefilled from profile', () => !!gainIn);
+if (gainIn) { gainIn.value = '1.5'; gainIn.dispatchEvent(new Event('input')); }
+await sleep(900);
+check('settings: editing target gain saves it', () =>
+  mockStore.calls.some((c) => c.name === 'saveProfile' && c.args[1]?.targetGainLbPerMonth === 1.5));
+check('settings: has an export button', () => text().includes('Export everything'));
+const tgt = view.querySelector('.card input[type=number]');
+tgt.value = '2500'; tgt.dispatchEvent(new Event('input'));
+await sleep(900);
+check('settings: editing a target saves it', () =>
+  mockStore.calls.some((c) => c.name === 'saveProfile' && c.args[1]?.targets?.kcal === 2500));
+settings.destroy();
+
+/* ---------------- report ---------------- */
+const failed = results.filter((r) => r.startsWith('FAIL'));
+const report = [
+  ...results,
+  '',
+  `${results.length - failed.length} passed, ${failed.length} failed`,
+  errors.length ? '\nRUNTIME ERRORS:\n' + errors.join('\n') : '\nno runtime errors',
+].join('\n');
+document.getElementById('report').textContent = report;
+document.title = failed.length || errors.length ? 'HARNESS-FAIL' : 'HARNESS-OK';
+</script>
+</body>
+</html>

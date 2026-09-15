@@ -1,1 +1,51 @@
-Hello
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Macro Tracker</title>
+<meta name="description" content="Personal macro and weight tracker.">
+<meta name="theme-color" content="#0f1115">
+<meta name="color-scheme" content="dark light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Macros">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./assets/apple-touch-icon-180.png">
+<link rel="icon" type="image/png" sizes="32x32" href="./assets/favicon-32.png">
+<link rel="stylesheet" href="./css/app.css">
+</head>
+<body>
+
+<div id="boot" class="boot">
+  <div class="boot-spinner" aria-hidden="true"></div>
+  <p class="boot-text">Loading&hellip;</p>
+  <noscript><p class="boot-text">This app needs JavaScript.</p></noscript>
+</div>
+
+<div id="app" hidden>
+  <main id="view" class="view"></main>
+
+  <nav id="tabbar" class="tabbar" hidden>
+    <a class="tab" href="#/entry"    data-tab="entry">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span>Entry</span>
+    </a>
+    <a class="tab" href="#/viewer"   data-tab="viewer">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V5M4 19h16M8 19v-6M13 19V9M18 19v-3"/></svg>
+      <span>Viewer</span>
+    </a>
+    <a class="tab" href="#/settings" data-tab="settings">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.2 2.2M16.9 16.9l2.2 2.2M19.1 4.9l-2.2 2.2M7.1 16.9l-2.2 2.2"/></svg>
+      <span>Settings</span>
+    </a>
+  </nav>
+</div>
+
+<div id="sheet-root"></div>
+<div id="toast-root" class="toast-root" role="status" aria-live="polite"></div>
+
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
