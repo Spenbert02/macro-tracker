@@ -24,7 +24,7 @@ service cloud.firestore {
     // Firebase console -> Authentication -> Users -> "User UID",
     // or just read it off the app's first-run screen, which has a Copy button.
     function ownerUid() {
-      return 'PASTE_YOUR_FIREBASE_UID_HERE';
+      return '3Wg7kNQFM3OHSxNcw3vzIaBq5X42';
     }
 
     function isOwner() {
