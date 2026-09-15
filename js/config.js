@@ -25,7 +25,7 @@ export const OWNER_UID = '3Wg7kNQFM3OHSxNcw3vzIaBq5X42';
 
 /* Bump on EVERY deploy, together with VERSION in sw.js, or the service worker
  * will keep serving the old vendor bundles. */
-export const APP_VERSION = '1.0.0';
+export const APP_VERSION = '1.1.0';
 
 /* Identifies us to Open Food Facts. A browser cannot set a User-Agent header
  * (it is a forbidden header name), so these ride along as query params instead. */

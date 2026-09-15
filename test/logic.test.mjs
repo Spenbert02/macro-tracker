@@ -107,5 +107,51 @@ ok_('aggregate: a year collapses to <= 70 points', bucketed.length <= 70, bucket
 ok_('aggregate: buckets report their span',        bucketed[0].span > 1);
 eq ('aggregate: short ranges are left alone',      aggregate(many.slice(0, 30), 70).length, 30);
 
+// ---- supplements
+const { normalizeSupplements, supplementStats, toggleSupp, takenOn, newSupplementId } =
+  await import('../js/supplements.js');
+
+const SUPPS = [{ id: 'a', name: 'Creatine' }, { id: 'b', name: 'Vitamin D' }, { id: 'c', name: 'Fish oil' }];
+
+eq('supps: normalize drops junk',      normalizeSupplements([null, 5, { name: 'no id' }, { id: 'a', name: 'X' }]),
+                                       [{ id: 'a', name: 'X' }]);
+eq('supps: normalize de-duplicates',   normalizeSupplements([{ id: 'a', name: 'X' }, { id: 'a', name: 'Y' }]),
+                                       [{ id: 'a', name: 'X' }]);
+eq('supps: nameless becomes Untitled', normalizeSupplements([{ id: 'a' }]), [{ id: 'a', name: 'Untitled' }]);
+eq('supps: non-array is empty',        normalizeSupplements(undefined), []);
+eq('supps: caps the list length',      normalizeSupplements(Array.from({ length: 40 }, (_, i) => ({ id: 's' + i, name: 'n' }))).length, 20);
+
+eq('supps: toggle on',   toggleSupp(['a'], 'b', true).sort(),  ['a', 'b']);
+eq('supps: toggle off',  toggleSupp(['a', 'b'], 'a', false),   ['b']);
+eq('supps: toggle on is idempotent', toggleSupp(['a'], 'a', true), ['a']);
+
+// a deleted supplement's leftover id must not count toward anything
+eq('supps: ignores ids no longer on the list', takenOn({ supps: ['a', 'zz'] }, SUPPS), ['a']);
+
+const DAYS = [
+  { date: '1', supps: ['a', 'b', 'c'] },   // all three
+  { date: '2', supps: ['a', 'b'] },        // missed fish oil
+  { date: '3', supps: [] },                // took nothing
+  { date: '4', supps: ['a', 'b', 'c'] },   // all three
+  { date: '5' },                           // no field at all
+];
+const st = supplementStats(DAYS, SUPPS);
+eq('supps: counts every day in range', st.totalDays, 5);
+eq('supps: days with all of them',     st.allDays, 2);
+eq('supps: days with any of them',     st.anyDays, 3);
+eq('supps: per-supplement counts',     st.perSupplement.map((x) => x.days), [3, 3, 2]);
+eq('supps: per-supplement names kept', st.perSupplement.map((x) => x.name), ['Creatine', 'Vitamin D', 'Fish oil']);
+ok_('supps: pct is days over range',   Math.abs(st.perSupplement[2].pct - 0.4) < 1e-9);
+
+// a stale id from a deleted supplement must not block an "all" day
+eq('supps: deleted ids do not block a full day',
+   supplementStats([{ supps: ['a', 'b', 'c', 'deleted'] }], SUPPS).allDays, 1);
+
+eq('supps: no supplements means no all-days', supplementStats(DAYS, []).allDays, 0);
+eq('supps: no days is not a crash',           supplementStats([], SUPPS).allDays, 0);
+eq('supps: null days is not a crash',         supplementStats(null, SUPPS).totalDays, 0);
+ok_('supps: ids are unique',                  newSupplementId() !== newSupplementId());
+ok_('supps: id has the right prefix',         newSupplementId().startsWith('sup_'));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 if (fail) Deno.exit(1);

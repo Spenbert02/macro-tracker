@@ -3,9 +3,9 @@
 A private macro and weight tracker, running on GitHub Pages at
 <https://www.spencer-bertram.com/macro-tracker/>.
 
-Tracks four things and nothing else: **protein, carbs, fat, calories** — plus
-body weight in pounds. Scans barcodes with the phone camera, saves custom meals,
-graphs everything over time, and works offline.
+Tracks four macros and nothing else: **protein, carbs, fat, calories** — plus
+body weight in pounds and a daily supplement checklist. Scans barcodes with the
+phone camera, saves custom meals, graphs everything over time, and works offline.
 
 Free forever: GitHub Pages for hosting, Firebase's free Spark tier for storage
 and sign-in, Open Food Facts for barcode lookups. No build step, no npm, no
@@ -132,6 +132,7 @@ js/
   entryModel.js     the shape of a logged item (pure)
   off.js            Open Food Facts lookup
   scanner.js        camera + barcode decoding
+  supplements.js    the supplement list and adherence counting (pure)
   charts.js         Chart.js wrappers
   ui/               one module per screen
 ```
@@ -163,11 +164,32 @@ Alongside it, the stat strip shows your actual fitted trend in the same units, s
 the two compare directly. It turns green when you're within half a pound a month
 of the target or already past it in the direction you asked for.
 
+### Supplements
+
+Settings holds an ordered list — add, rename, reorder, remove. Each one gets an
+id, and it's the **id** that days record, so renaming "Vit D" to "Vitamin D"
+keeps every day you already ticked.
+
+They show up on the Entry page as a checkbox per supplement with an `n/3`
+counter that turns green on a clean sweep. Ticking repaints immediately and
+writes the whole array after half a second, so a tap is instant whether or not
+you have signal.
+
+The Viewer gets a bar per supplement — days taken out of days in the range —
+plus an **All of them** bar for days you took every one, and a matching stat
+tile. Counts come straight off the day documents rather than the bucketed chart
+points, since these are whole-day counts and averaging them into weekly buckets
+would only blur an exact number.
+
+Removing a supplement stops it appearing on the Entry page and in the chart, but
+days you already ticked keep their record, and a removed supplement never
+retroactively spoils an "All of them" day.
+
 ### Data model
 
 ```
-users/{uid}                     targets, goal modes, timezone
-users/{uid}/days/{YYYY-MM-DD}   one doc per day, holding an entries array
+users/{uid}                     targets, goal modes, timezone, supplement list
+users/{uid}/days/{YYYY-MM-DD}   one doc per day: entries array, weight, supplements taken
 users/{uid}/foods/{foodId}      your food library, and the barcode cache
 users/{uid}/meals/{mealId}      saved meals
 ```
@@ -194,6 +216,10 @@ off gets flagged in the UI against `4P + 4C + 9F`.
 plainly they'll ban IPs over it. Every lookup is cached as a food document in
 Firestore, so a given product is fetched at most once ever, and a repeat scan
 resolves instantly from the local cache — offline included.
+
+**Supplement adherence has all days as its denominator** — not just days you
+logged food. A day you ate nothing and took nothing still counts against you,
+which is the point of tracking it. Pick a shorter range to see recent adherence.
 
 **Underscore files.** GitHub Pages runs Jekyll, which silently drops anything
 starting with `_`. The empty `.nojekyll` at the repo root is what prevents that.

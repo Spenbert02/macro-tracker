@@ -327,6 +327,94 @@ export async function macroChart(canvas, points, targets) {
   });
 }
 
+/**
+ * Supplement adherence: one horizontal bar per supplement, plus an "All of them"
+ * bar, measured against every day in the range.
+ *
+ * `stats` is the output of supplementStats() in js/supplements.js.
+ */
+export async function supplementChart(canvas, stats) {
+  await ensureChart();
+  const t = theme();
+
+  const rows = [
+    { name: 'All of them', days: stats.allDays, all: true },
+    ...stats.perSupplement,
+  ];
+  const labels = rows.map((r) => r.name);
+  const data = rows.map((r) => r.days);
+  const total = Math.max(1, stats.totalDays);
+
+  /* Chart.js has no built-in value labels and the datalabels plugin is another
+   * CDN dependency; this inline plugin is a dozen lines and needs no download. */
+  const valueLabels = {
+    id: 'suppValueLabels',
+    afterDatasetsDraw(chart) {
+      const { ctx } = chart;
+      const meta = chart.getDatasetMeta(0);
+      ctx.save();
+      ctx.font = `600 11px ${Chart.defaults.font.family}`;
+      ctx.textBaseline = 'middle';
+      ctx.textAlign = 'left';
+      meta.data.forEach((bar, i) => {
+        ctx.fillStyle = rows[i].all ? t.good : t.text;
+        ctx.fillText(String(data[i]), bar.x + 6, bar.y);
+      });
+      ctx.restore();
+    },
+  };
+
+  return make(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Days taken',
+        data,
+        backgroundColor: rows.map((r) => (r.all ? t.good : t.accent)),
+        borderRadius: 3,
+        borderSkipped: false,
+        barPercentage: 0.72,
+        categoryPercentage: 0.86,
+      }],
+    },
+    options: {
+      ...baseOptions(t),
+      indexAxis: 'y',
+      // Room on the right for the value labels the plugin draws past the bar end.
+      layout: { padding: { top: 2, right: 26, bottom: 0, left: 0 } },
+      plugins: {
+        ...baseOptions(t).plugins,
+        tooltip: {
+          ...baseOptions(t).plugins.tooltip,
+          callbacks: {
+            label: (ctx) => {
+              const n = ctx.parsed.x;
+              return `${n} of ${stats.totalDays} days (${Math.round((n / total) * 100)}%)`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          suggestedMax: stats.totalDays,
+          grid: { color: t.grid },
+          border: { display: false },
+          ticks: { color: t.faint, precision: 0, maxTicksLimit: 5, font: { size: 10 } },
+          title: { display: true, text: 'days', color: t.faint, font: { size: 10 } },
+        },
+        y: {
+          grid: { display: false },
+          border: { color: t.grid },
+          ticks: { color: t.text, font: { size: 11 }, autoSkip: false },
+        },
+      },
+    },
+    plugins: [valueLabels],
+  });
+}
+
 /** Chart.js instances hold canvases and listeners; leaking them makes the app crawl. */
 export function destroyAll() {
   for (const c of instances) { try { c.destroy(); } catch {} }

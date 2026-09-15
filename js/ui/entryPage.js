@@ -9,6 +9,7 @@ import {
   MACRO_LETTER, DEFAULT_TARGETS, DEFAULT_MODES, DEFAULT_BAND_PCT,
 } from '../macros.js';
 import { toast, toastOk, toastErr } from './toast.js';
+import { normalizeSupplements, toggleSupp } from '../supplements.js';
 
 let subs = [];
 
@@ -19,6 +20,7 @@ export function render(root) {
   const kcalCard   = h('div', { class: 'card kcal-card' });
   const macroGrid  = h('div', { class: 'macro-grid' });
   const weightCard = h('div', { class: 'card weight-card' });
+  const suppCard   = h('div', { class: 'card supp-card', hidden: true });
   const listHead   = h('div', { class: 'section-head' });
   const list       = h('div', { class: 'entry-list' });
   const pendingRow = h('div', { class: 'pending', hidden: true }, icon(ICONS.refresh, 14), h('span'));
@@ -34,7 +36,7 @@ export function render(root) {
     }, icon(ICONS.plus, 20), 'Add food'),
   );
 
-  mount(root, dayStrip, kcalCard, macroGrid, weightCard, listHead, list, pendingRow, selectBar, addBtn);
+  mount(root, dayStrip, kcalCard, macroGrid, weightCard, suppCard, listHead, list, pendingRow, selectBar, addBtn);
 
   /* ---- selection mode (for building a meal out of what you already logged) ---- */
   let selected = new Set();
@@ -78,7 +80,7 @@ export function render(root) {
       h('button', { 'aria-label': 'Previous day', onclick: () => go(-1) }, icon(ICONS.left)),
       h('button', {
         class: 'center-btn',
-        onclick: () => setState({ dayKey: localDayKey(new Date(), tz) }),
+        onclick: () => { saveSupps.flush(); setState({ dayKey: localDayKey(new Date(), tz) }); },
         title: 'Jump to today',
       },
         h('span', { class: 'day-label' }, prettyDay(dayKey)),
@@ -93,6 +95,7 @@ export function render(root) {
     const next = addDays(dayKey, n);
     if (isFuture(next, profile?.tz || deviceTz())) return;
     clearSelection();
+    saveSupps.flush();
     setState({ dayKey: next });
   };
 
@@ -183,6 +186,72 @@ export function render(root) {
     if (weightDirty || document.activeElement === weightInput) return;
     const w = getState().today?.weightLb;
     weightInput.value = w === null || w === undefined ? '' : String(w);
+  }
+
+  /* ---- supplements ----
+   * Ticking a box updates a local set and repaints immediately, then writes the
+   * whole array after a short pause. Firestore queues the write offline, so a
+   * tap feels instant whether or not there is a connection.
+   *
+   * The pending set carries the day key it belongs to. Without that, stepping
+   * to another day inside the debounce window would land the write on the day
+   * you just moved to. */
+  let suppDirty = null;          // { key, ids } while a write is pending
+  const suppState = h('span', { class: 'save-state' });
+
+  const saveSupps = debounce(async () => {
+    const pending = suppDirty;
+    if (!pending) return;
+    const { user } = getState();
+    mount(suppState, icon(ICONS.refresh, 16));
+    suppState.className = 'save-state busy';
+    try {
+      const s = await import('../store.js');
+      await s.setSupps(user.uid, pending.key, pending.ids);
+      if (suppDirty === pending) suppDirty = null;
+      mount(suppState, icon(ICONS.check, 16));
+      suppState.className = 'save-state ok';
+      setTimeout(() => { if (!suppDirty) clear(suppState); }, 2000);
+    } catch (err) {
+      if (suppDirty === pending) suppDirty = null;
+      suppState.className = 'save-state';
+      clear(suppState);
+      toastErr(friendly(err));
+      paintSupps();
+    }
+  }, 500);
+
+  function paintSupps() {
+    const { today, profile, dayKey } = getState();
+    const list = normalizeSupplements(profile?.supplements);
+
+    // Nothing configured yet: stay out of the way entirely.
+    if (!list.length) { suppCard.hidden = true; return; }
+    suppCard.hidden = false;
+
+    const local = suppDirty?.key === dayKey ? suppDirty.ids : null;
+    const taken = new Set(local || today?.supps || []);
+    const done = list.filter((sup) => taken.has(sup.id)).length;
+
+    mount(suppCard,
+      h('div', { class: 'supp-head' },
+        h('span', { class: 'supp-title' }, 'Supplements'),
+        h('span', { class: `supp-count tnum${done === list.length ? ' all' : ''}` }, `${done}/${list.length}`),
+        suppState,
+      ),
+      h('div', { class: 'supp-list' }, ...list.map((sup) => {
+        const box = h('input', {
+          type: 'checkbox', checked: taken.has(sup.id),
+          onchange: () => {
+            suppDirty = { key: dayKey, ids: toggleSupp(Array.from(taken), sup.id, box.checked) };
+            navigator.vibrate?.(12);
+            paintSupps();
+            saveSupps();
+          },
+        });
+        return h('label', { class: `supp${taken.has(sup.id) ? ' on' : ''}` }, box, h('span', null, sup.name));
+      })),
+    );
   }
 
   /* ---- entry list ---- */
@@ -277,11 +346,17 @@ export function render(root) {
   }
 
   /* ---- wire up ---- */
-  const paintAll = () => { paintDayStrip(); paintTotals(); paintWeight(); paintList(); };
+  const paintAll = () => { paintDayStrip(); paintTotals(); paintWeight(); paintSupps(); paintList(); };
   subs.push(subscribe(['today', 'profile', 'dayKey', 'pending'], paintAll));
   paintAll();
 
-  return { destroy() { subs.forEach((u) => u()); subs = []; saveWeight.cancel(); } };
+  return {
+    destroy() {
+      subs.forEach((u) => u()); subs = [];
+      saveWeight.cancel();
+      saveSupps.flush();      // don't lose a tick the user just made
+    },
+  };
 }
 
 

@@ -63,6 +63,8 @@ export const ICONS = {
   close:   'M6 6l12 12M18 6L6 18',
   left:    'M15 18l-6-6 6-6',
   right:   'M9 18l6-6-6-6',
+  up:      'M18 15l-6-6-6 6',
+  down:    'M6 9l6 6 6-6',
   check:   'M20 6L9 17l-5-5',
   trash:   'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6',
   camera:  'M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z',

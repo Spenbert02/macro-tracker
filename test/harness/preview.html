@@ -24,7 +24,8 @@ setState({
   user: { uid: 'abc123uid', email: 'you@example.com', providerData: [{ providerId: 'google.com' }] },
   profile: ms.blankProfile(),
   dayKey: localDayKey(new Date(), 'America/Chicago'),
-  today: { date: 'x', weightLb: 182.4, entries: ms.ENTRIES, totals: sumEntries(ms.ENTRIES) },
+  today: { date: 'x', weightLb: 182.4, entries: ms.ENTRIES, totals: sumEntries(ms.ENTRIES),
+           supps: ['sup_creat', 'sup_vitd'] },
   foods: ms.FOODS, meals: ms.MEALS, ready: true, pending: false,
 });
 const view = document.getElementById('view');

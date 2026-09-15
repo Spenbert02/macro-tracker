@@ -1,7 +1,7 @@
 /* store.js — THE ONLY MODULE THAT IMPORTS firebase/firestore.
  *
  * Data model
- *   users/{uid}                     profile: targets, goal modes, tz, prefs
+ *   users/{uid}                     profile: targets, goal modes, tz, supplement list
  *   users/{uid}/days/{YYYY-MM-DD}   one doc per day, holding an entries array
  *   users/{uid}/foods/{foodId}      food library AND the offline barcode cache
  *   users/{uid}/meals/{mealId}      saved meals
@@ -19,6 +19,7 @@ import {
 import { db } from './firebase.js';
 import { sumEntries, sumItems, round, DEFAULT_TARGETS, DEFAULT_MODES, DEFAULT_BAND_PCT } from './macros.js';
 import { deviceTz } from './dates.js';
+import { normalizeSupplements } from './supplements.js';
 
 export const MAX_ENTRIES_PER_DAY = 200;   // a 1 MiB doc fits ~5,000; this is a sanity rail
 
@@ -37,6 +38,8 @@ export function blankProfile() {
     /* Target rate of weight change, in pounds per month. Positive to gain,
      * negative to lose, 0 to turn the projection off. */
     targetGainLbPerMonth: 0,
+    /* Supplements to tick off each day: [{ id, name }]. Order is display order. */
+    supplements: [],
     tz:       deviceTz(),
     weightUnit: 'lb',
   };
@@ -52,6 +55,7 @@ export function normalizeProfile(raw) {
     modes:   { ...base.modes,   ...(raw.modes   || {}) },
     bandPct: typeof raw.bandPct === 'number' ? raw.bandPct : base.bandPct,
     targetGainLbPerMonth: typeof raw.targetGainLbPerMonth === 'number' ? raw.targetGainLbPerMonth : 0,
+    supplements: normalizeSupplements(raw.supplements),
     tz:      raw.tz || base.tz,
   };
 }
@@ -68,10 +72,15 @@ export const saveProfile = (uid, patch) =>
 /* ---------------- days ---------------- */
 
 export function blankDay(key) {
-  return { date: key, weightLb: null, entries: [], totals: { p: 0, c: 0, f: 0, kcal: 0 } };
+  return { date: key, weightLb: null, entries: [], supps: [], totals: { p: 0, c: 0, f: 0, kcal: 0 } };
 }
 
-const normalizeDay = (key, raw) => ({ ...blankDay(key), ...(raw || {}), date: key, entries: raw?.entries || [] });
+const normalizeDay = (key, raw) => ({
+  ...blankDay(key), ...(raw || {}),
+  date: key,
+  entries: raw?.entries || [],
+  supps: Array.isArray(raw?.supps) ? raw.supps : [],
+});
 
 /**
  * Live day doc. Fires immediately from the local cache, again for local pending
@@ -151,6 +160,19 @@ export const setWeight = (uid, key, lb) =>
   setDoc(dayRef(uid, key), {
     date: key,
     weightLb: lb === null || lb === '' ? null : round(Number(lb), 1),
+    updatedAt: serverTimestamp(),
+  }, { merge: true });
+
+/**
+ * Which supplements were taken on a day. Written as a whole array, on its own,
+ * for the same reason as setWeight: it never touches the entries array, and
+ * there is no read-modify-write to race — the caller already holds the full set
+ * from the live snapshot.
+ */
+export const setSupps = (uid, key, ids) =>
+  setDoc(dayRef(uid, key), {
+    date: key,
+    supps: Array.from(new Set(ids || [])),
     updatedAt: serverTimestamp(),
   }, { merge: true });
 

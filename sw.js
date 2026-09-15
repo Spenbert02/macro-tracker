@@ -4,14 +4,14 @@
  * Forget, and the pinned vendor bundles below keep being served from the old cache.
  */
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const CACHE = `macro-tracker-${VERSION}`;
 
 const APP_SHELL = [
   './', './index.html', './manifest.json', './css/app.css',
   './js/config.js', './js/firebase.js', './js/auth.js', './js/state.js', './js/store.js',
   './js/dates.js', './js/macros.js', './js/off.js', './js/scanner.js', './js/charts.js',
-  './js/main.js', './js/entryModel.js',
+  './js/main.js', './js/entryModel.js', './js/supplements.js',
   './js/ui/dom.js', './js/ui/router.js', './js/ui/toast.js', './js/ui/sheet.js',
   './js/ui/signInView.js', './js/ui/entryPage.js', './js/ui/viewerPage.js',
   './js/ui/settingsPage.js', './js/ui/addFoodSheet.js', './js/ui/scanView.js', './js/ui/mealEditor.js',

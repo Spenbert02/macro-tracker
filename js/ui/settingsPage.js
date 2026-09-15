@@ -6,6 +6,7 @@ import { deviceTz } from '../dates.js';
 import { MACRO_LABEL, DEFAULT_TARGETS, DEFAULT_MODES, DEFAULT_BAND_PCT } from '../macros.js';
 import { toast, toastOk, toastErr } from './toast.js';
 import { friendly } from '../entryModel.js';
+import { normalizeSupplements, newSupplementId, MAX_SUPPLEMENTS, MAX_NAME_LENGTH } from '../supplements.js';
 import { APP_VERSION } from '../config.js';
 import { signOutNow, linkPassword, hasPassword, providerIds, authError } from '../auth.js';
 
@@ -21,6 +22,7 @@ export function render(root) {
   subs.forEach((u) => u()); subs = [];
 
   const targetsCard = h('div', { class: 'card' });
+  const suppCard    = h('div', { class: 'card' });
   const accountCard = h('div', { class: 'card' });
   const dataCard    = h('div', { class: 'card' });
   const aboutCard   = h('div', { class: 'card' });
@@ -28,6 +30,8 @@ export function render(root) {
   mount(root,
     h('div', { class: 'section-head' }, h('h2', null, 'Daily targets')),
     targetsCard,
+    h('div', { class: 'section-head' }, h('h2', null, 'Supplements')),
+    suppCard,
     h('div', { class: 'section-head' }, h('h2', null, 'Account')),
     accountCard,
     h('div', { class: 'section-head' }, h('h2', null, 'Your data')),
@@ -38,12 +42,25 @@ export function render(root) {
 
   /* ---------------- targets ---------------- */
 
-  const save = debounce(async (patch) => {
+  /* Patches accumulate rather than replace. Two different fields edited inside
+   * the debounce window used to mean the first one was silently dropped. */
+  let pendingPatch = {};
+  const flushSave = debounce(async () => {
+    const patch = pendingPatch;
+    pendingPatch = {};
+    if (!Object.keys(patch).length) return;
     try {
       const store = await import('../store.js');
       await store.saveProfile(getState().user.uid, patch);
-    } catch (err) { toastErr(friendly(err)); }
+    } catch (err) {
+      // Drop any optimistic supplement list so the UI falls back to the truth.
+      localSupps = null;
+      paintSupplements();
+      toastErr(friendly(err));
+    }
   }, 700);
+  const save = (patch) => { Object.assign(pendingPatch, patch); flushSave(); };
+  save.flush = () => flushSave.flush();
 
   function paintTargets() {
     const profile = getState().profile;
@@ -130,6 +147,94 @@ export function render(root) {
       tzInput,
       h('p', { class: 'tiny faint mt' },
         'This decides when one day ends and the next begins. Food logged at 11pm should land on today, not tomorrow.'),
+    );
+  }
+
+  /* ---------------- supplements ---------------- */
+
+  /* The profile round-trips through Firestore, and the write is debounced, so a
+   * fresh add would vanish for a second before reappearing. Hold the new list
+   * locally until the snapshot catches up with it. */
+  let localSupps = null;
+
+  function currentSupplements() {
+    const fromProfile = normalizeSupplements(getState().profile?.supplements);
+    if (localSupps && JSON.stringify(localSupps) === JSON.stringify(fromProfile)) localSupps = null;
+    return localSupps || fromProfile;
+  }
+
+  function paintSupplements() {
+    const profile = getState().profile;
+    if (!profile) return mount(suppCard, h('div', { class: 'empty' }, 'Loading\u2026'));
+
+    const list = currentSupplements();
+    const commit = (next) => { localSupps = next; save({ supplements: next }); paintSupplements(); };
+
+    const rows = list.map((sup, idx) => {
+      const nameInput = h('input', {
+        type: 'text', value: sup.name, maxlength: String(MAX_NAME_LENGTH),
+        'aria-label': `Name of supplement ${idx + 1}`,
+      });
+      // Rename on blur, not on every keystroke: a repaint mid-word would steal
+      // the caret, and the id is what history is keyed on anyway.
+      nameInput.addEventListener('change', () => {
+        const name = nameInput.value.trim().slice(0, MAX_NAME_LENGTH);
+        if (!name || name === sup.name) { nameInput.value = sup.name; return; }
+        commit(list.map((x) => (x.id === sup.id ? { ...x, name } : x)));
+      });
+
+      const move = (delta) => {
+        const next = list.slice();
+        const to = idx + delta;
+        if (to < 0 || to >= next.length) return;
+        [next[idx], next[to]] = [next[to], next[idx]];
+        commit(next);
+      };
+
+      return h('div', { class: 'supp-edit' },
+        nameInput,
+        h('button', {
+          class: 'btn btn-sm btn-ghost', 'aria-label': `Move ${sup.name} up`,
+          disabled: idx === 0, onclick: () => move(-1),
+        }, icon(ICONS.up, 15)),
+        h('button', {
+          class: 'btn btn-sm btn-ghost', 'aria-label': `Move ${sup.name} down`,
+          disabled: idx === list.length - 1, onclick: () => move(1),
+        }, icon(ICONS.down, 15)),
+        h('button', {
+          class: 'btn btn-sm btn-ghost', 'aria-label': `Remove ${sup.name}`,
+          onclick: () => {
+            if (!confirm(`Remove "${sup.name}"?\n\nDays you already ticked it on keep their record, but it stops appearing on the Entry page and in the chart.`)) return;
+            commit(list.filter((x) => x.id !== sup.id));
+          },
+        }, icon(ICONS.trash, 15)),
+      );
+    });
+
+    const addInput = h('input', {
+      type: 'text', placeholder: 'e.g. Creatine', maxlength: String(MAX_NAME_LENGTH),
+      'aria-label': 'New supplement name',
+    });
+    const add = () => {
+      const name = addInput.value.trim().slice(0, MAX_NAME_LENGTH);
+      if (!name) return addInput.focus();
+      if (list.length >= MAX_SUPPLEMENTS) return toastErr(`That is the limit of ${MAX_SUPPLEMENTS} supplements.`);
+      addInput.value = '';
+      commit([...list, { id: newSupplementId(), name }]);
+      toastOk(`Added ${name}`);
+    };
+    addInput.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); add(); } });
+
+    mount(suppCard,
+      list.length
+        ? h('div', { class: 'supp-edit-list' }, ...rows)
+        : h('div', { class: 'empty' }, 'No supplements yet.'),
+      h('div', { class: 'row mt' },
+        h('div', { class: 'grow' }, addInput),
+        h('button', { class: 'btn', onclick: add }, icon(ICONS.plus, 17), 'Add'),
+      ),
+      h('p', { class: 'tiny faint mt' },
+        'These appear as checkboxes on the Entry page, and the Viewer counts how many days you took each one.'),
     );
   }
 
@@ -258,8 +363,10 @@ export function render(root) {
   /* ---------------- wire up ---------------- */
 
   subs.push(subscribe(['profile'], paintTargets));
+  subs.push(subscribe(['profile'], paintSupplements));
   subs.push(subscribe(['user'], paintAccount));
   paintTargets();
+  paintSupplements();
   paintAccount();
 
   return { destroy() { subs.forEach((u) => u()); subs = []; save.flush(); } };

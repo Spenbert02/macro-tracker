@@ -465,6 +465,90 @@ input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; marg
 .save-state.ok { color: var(--good); }
 .save-state.busy { animation: spin 1s linear infinite; }
 
+/* ---------- supplements ---------- */
+
+.supp-card { padding: 12px var(--pad) 14px; }
+
+.supp-head {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 10px;
+}
+.supp-title {
+  flex: 1;
+  font-size: 0.74rem; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-faint);
+}
+.supp-count {
+  font-size: 0.8rem; font-weight: 700;
+  color: var(--text-dim);
+}
+.supp-count.all { color: var(--good); }
+
+.supp-list { display: flex; flex-direction: column; gap: 6px; }
+
+/* The whole row is the tap target, not just the box. */
+.supp {
+  display: flex; align-items: center; gap: 12px;
+  min-height: var(--tap);
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg-sunken);
+  font-size: 0.94rem;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  transition: background .13s, border-color .13s;
+}
+.supp.on {
+  border-color: var(--good-line);
+  background: var(--good-bg);
+}
+.supp.on > span { color: var(--good); font-weight: 600; }
+@media (prefers-reduced-motion: reduce) { .supp { transition: none; } }
+
+/* Custom box: the native control can't be styled consistently across browsers. */
+.supp input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  flex: none;
+  width: 24px; height: 24px;
+  margin: 0;
+  border: 2px solid var(--line);
+  border-radius: 7px;
+  background: var(--bg-raise);
+  display: grid; place-content: center;
+  cursor: pointer;
+}
+.supp input[type="checkbox"]::after {
+  content: "";
+  width: 12px; height: 7px;
+  border: 2px solid var(--bg);
+  border-top: 0; border-right: 0;
+  transform: rotate(-45deg) translate(1px, -2px) scale(0.6);
+  opacity: 0;
+  transition: opacity .1s, transform .1s;
+}
+.supp input[type="checkbox"]:checked {
+  background: var(--good);
+  border-color: var(--good);
+}
+.supp input[type="checkbox"]:checked::after { opacity: 1; transform: rotate(-45deg) translate(1px, -2px) scale(1); }
+.supp input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* settings editor */
+.supp-edit-list { display: flex; flex-direction: column; gap: 8px; }
+.supp-edit {
+  display: flex; align-items: center; gap: 4px;
+}
+.supp-edit input[type="text"] { flex: 1; min-width: 0; }
+.supp-edit .btn-sm {
+  flex: none;
+  width: 34px; padding: 0;
+  min-height: 38px;
+}
+.supp-edit .btn-sm:disabled { opacity: 0.25; }
+
 /* ---------- entry list ---------- */
 
 .entry-list { display: flex; flex-direction: column; gap: 8px; }

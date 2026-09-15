@@ -2,6 +2,12 @@
 import { sumEntries } from '../../js/macros.js';
 import { addDays, localDayKey } from '../../js/dates.js';
 
+export const SUPPLEMENTS = [
+  { id: 'sup_creat', name: 'Creatine' },
+  { id: 'sup_vitd',  name: 'Vitamin D' },
+  { id: 'sup_fish',  name: 'Fish oil' },
+];
+
 export const MAX_ENTRIES_PER_DAY = 200;
 export const calls = [];
 const log = (name, ...args) => { calls.push({ name, args }); };
@@ -10,6 +16,7 @@ export const blankProfile = () => ({
   targets: { p: 180, c: 250, f: 70, kcal: 2400 },
   modes: { p: 'min', c: 'max', f: 'max', kcal: 'band' },
   bandPct: 0.05, targetGainLbPerMonth: -2, tz: 'America/Chicago', weightUnit: 'lb',
+  supplements: [...SUPPLEMENTS],
 });
 export const normalizeProfile = (r) => ({ ...blankProfile(), ...(r || {}) });
 
@@ -25,9 +32,10 @@ export const ENTRIES = [
 const today = () => ({
   date: localDayKey(new Date(), 'America/Chicago'),
   weightLb: 182.4, entries: ENTRIES, totals: sumEntries(ENTRIES),
+  supps: ['sup_creat', 'sup_vitd'],
 });
 
-export const blankDay = (k) => ({ date: k, weightLb: null, entries: [], totals: { p:0,c:0,f:0,kcal:0 } });
+export const blankDay = (k) => ({ date: k, weightLb: null, entries: [], supps: [], totals: { p:0,c:0,f:0,kcal:0 } });
 
 export function watchProfile(uid, cb) { cb(blankProfile(), true); return () => {}; }
 export function watchDay(uid, key, cb) { cb(today(), false); return () => {}; }
@@ -41,8 +49,13 @@ function fakeRange(n) {
     if (i % 7 === 3) continue;                      // deliberate gaps
     const scale = 0.7 + Math.sin(i / 4) * 0.25;
     const entries = [{ id: 'x', name: 'f', servings: 1, p: 150 * scale, c: 230 * scale, f: 68 * scale, kcal: 2250 * scale }];
+    // creatine most days, vitamin D often, fish oil rarely — so the bars differ
+    const supps = [];
+    if (i % 9 !== 0) supps.push('sup_creat');
+    if (i % 4 !== 0) supps.push('sup_vitd');
+    if (i % 3 === 0) supps.push('sup_fish');
     out.push({ date, weightLb: i % 3 === 0 ? Math.round((184 - (n - i) * 0.03) * 10) / 10 : null,
-               entries, totals: sumEntries(entries) });
+               entries, supps, totals: sumEntries(entries) });
   }
   return out;
 }
@@ -55,6 +68,7 @@ export const updateEntry = async (...a) => log('updateEntry', ...a);
 export const removeEntry = async (...a) => log('removeEntry', ...a);
 export const removeEntries = async (...a) => log('removeEntries', ...a);
 export const setWeight = async (...a) => log('setWeight', ...a);
+export const setSupps = async (...a) => log('setSupps', ...a);
 export const saveProfile = async (...a) => log('saveProfile', ...a);
 
 export const FOODS = [

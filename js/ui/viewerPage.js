@@ -5,6 +5,7 @@ import { getState, subscribe } from '../state.js';
 import { localDayKey, addDays, deviceTz } from '../dates.js';
 import { goalStatus, fmtInt, round, DEFAULT_TARGETS, DEFAULT_MODES, DEFAULT_BAND_PCT } from '../macros.js';
 import { friendly } from '../entryModel.js';
+import { supplementStats } from '../supplements.js';
 
 const RANGES = [
   { id: 7,   label: '7d'  },
@@ -93,6 +94,7 @@ export function render(root) {
     const weights = days.map((d) => d.weightLb).filter((v) => typeof v === 'number');
     const delta = weights.length > 1 ? round(weights[weights.length - 1] - weights[0], 1) : null;
     const targetRate = profile?.targetGainLbPerMonth || 0;
+    const supps = supplementStats(days, profile?.supplements);
 
     mount(stats,
       stat('Avg calories', fmtInt(avg('kcal'))),
@@ -116,6 +118,12 @@ export function render(root) {
         : null,
       targetRate
         ? stat('Target rate', `${targetRate > 0 ? '+' : ''}${targetRate} lb/mo`)
+        : null,
+
+      supps.perSupplement.length
+        ? stat('All supplements', `${supps.allDays} day${supps.allDays === 1 ? '' : 's'}`,
+               supps.allDays > 0 ? 'good' : null,
+               `Days you took every one of your ${supps.perSupplement.length} supplements`)
         : null,
     );
   }
@@ -162,11 +170,28 @@ export function render(root) {
     const [ch, cc, cCanvas] = wrap('Calories', note);
     const [mh, mc, mCanvas] = wrap('Macros', note);
 
-    mount(body, wh, wc, ch, cc, mh, mc);
+    /* Supplements are counted straight off the day docs rather than off the
+     * bucketed points — these are whole-day counts, so averaging them into
+     * weekly buckets would only blur an exact number. */
+    const supps = supplementStats(days, profile?.supplements);
+    let sCanvas = null;
+    const suppSection = [];
+    if (supps.perSupplement.length) {
+      const [sh, sc, canvas] = wrap('Supplements', `out of ${supps.totalDays} days`);
+      // One row per supplement plus the "All of them" row, so this card grows
+      // with the list rather than using the fixed chart height.
+      sc.querySelector('.chart-wrap').style.height =
+        `${Math.max(120, (supps.perSupplement.length + 1) * 34 + 46)}px`;
+      suppSection.push(sh, sc);
+      sCanvas = canvas;
+    }
+
+    mount(body, wh, wc, ch, cc, mh, mc, ...suppSection);
 
     await c.weightChart(wCanvas, points, targetRate);
     await c.caloriesChart(cCanvas, points, targets.kcal);
     await c.macroChart(mCanvas, points, targets);
+    if (sCanvas) await c.supplementChart(sCanvas, supps);
   }
 
   // Any change to the current day invalidates the cached ranges it appears in.

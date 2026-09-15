@@ -48,6 +48,8 @@ setState({
            totals: (await import('../../js/macros.js')).sumEntries(mockStore.ENTRIES) },
   foods: mockStore.FOODS, meals: mockStore.MEALS, ready: true, pending: false,
 });
+// today's fixture has creatine + vitamin D ticked, fish oil not
+Object.assign(getState().today, { supps: ['sup_creat', 'sup_vitd'] });
 
 const view = document.getElementById('view');
 const text = () => view.textContent.replace(/\s+/g, ' ');
@@ -73,6 +75,30 @@ check('entry: meal-sourced item carries a chip', () => !!view.querySelector('.en
 check('entry: newest item is first', () =>
   view.querySelectorAll('.entry .name')[0].textContent.includes('Chicken'));
 check('entry: Add food button present', () => !!view.querySelector('.addbar button'));
+
+/* ---------------- supplements on the Entry page ---------------- */
+check('supps: card renders one row per supplement', () => view.querySelectorAll('.supp').length === 3);
+check('supps: names shown', () => text().includes('Creatine') && text().includes('Fish oil'));
+check('supps: ticked ones are checked', () =>
+  Array.from(view.querySelectorAll('.supp input')).map(i => i.checked).join(',') === 'true,true,false');
+check('supps: counter shows 2/3', () => text().includes('2/3'));
+const fishBox = view.querySelectorAll('.supp input')[2];
+fishBox.checked = true; fishBox.dispatchEvent(new Event('change'));
+await sleep(60);
+check('supps: ticking repaints immediately', () => text().includes('3/3'));
+check('supps: full day highlights the counter', () => !!view.querySelector('.supp-count.all'));
+await sleep(700);
+check('supps: writes the whole array via setSupps', () => {
+  const c = mockStore.calls.findLast(x => x.name === 'setSupps');
+  return c && c.args[2].length === 3 && c.args[2].includes('sup_fish');
+});
+const creBox = view.querySelectorAll('.supp input')[0];
+creBox.checked = false; creBox.dispatchEvent(new Event('change'));
+await sleep(700);
+check('supps: unticking removes just that id', () => {
+  const c = mockStore.calls.findLast(x => x.name === 'setSupps');
+  return c && !c.args[2].includes('sup_creat') && c.args[2].includes('sup_fish');
+});
 
 /* deleting an item calls the store */
 view.querySelector('.entry .del').click();
@@ -164,7 +190,9 @@ const viewer = (await import('../../js/ui/viewerPage.js')).render(view);
 await sleep(2500);   // Chart.js comes from a CDN
 check('viewer: range selector has five options', () => view.querySelectorAll('.segmented button').length === 5);
 check('viewer: summary stats rendered', () => view.querySelectorAll('.stat').length >= 4);
-check('viewer: three charts drawn', () => view.querySelectorAll('canvas').length === 3);
+check('viewer: four charts drawn (incl. supplements)', () => view.querySelectorAll('canvas').length === 4);
+check('viewer: supplements section present', () => text().includes('Supplements') && text().includes('out of'));
+check('viewer: all-supplements stat present', () => text().includes('All supplements'));
 check('viewer: canvases have real pixels', () =>
   Array.from(view.querySelectorAll('canvas')).every((c) => c.width > 10 && c.height > 10));
 check('viewer: weight change stat present', () => text().includes('Weight change') || text().includes('Latest weight'));
@@ -184,6 +212,35 @@ const settings = (await import('../../js/ui/settingsPage.js')).render(view);
 await sleep(200);
 check('settings: four target inputs', () => view.querySelectorAll('.card input[type=number]').length >= 4);
 check('settings: goal-mode selects present', () => view.querySelectorAll('.card select').length === 4);
+
+/* supplement editor */
+check('settings: lists the supplements', () => view.querySelectorAll('.supp-edit').length === 3);
+check('settings: rows are editable by name', () =>
+  view.querySelector('.supp-edit input').value === 'Creatine');
+const addIn = Array.from(view.querySelectorAll('input[type=text]')).find(i => i.placeholder?.includes('Creatine'));
+check('settings: has an add field', () => !!addIn);
+if (addIn) {
+  addIn.value = 'Magnesium';
+  addIn.closest('.row').querySelector('button').click();
+}
+await sleep(60);
+check('settings: adding shows up immediately', () => view.querySelectorAll('.supp-edit').length === 4);
+await sleep(900);
+check('settings: adding saves the whole list', () => {
+  const c = mockStore.calls.findLast(x => x.name === 'saveProfile' && x.args[1]?.supplements);
+  return c && c.args[1].supplements.length === 4
+          && c.args[1].supplements[3].name === 'Magnesium'
+          && c.args[1].supplements[3].id.startsWith('sup_');
+});
+// reorder: move the second one up
+view.querySelectorAll('.supp-edit')[1].querySelectorAll('button')[0].click();
+await sleep(900);
+check('settings: reordering persists the new order', () => {
+  const c = mockStore.calls.findLast(x => x.name === 'saveProfile' && x.args[1]?.supplements);
+  return c && c.args[1].supplements[0].name === 'Vitamin D';
+});
+check('settings: first row cannot move up', () =>
+  view.querySelectorAll('.supp-edit')[0].querySelectorAll('button')[0].disabled);
 check('settings: shows the user id', () => text().includes('test-uid'));
 check('settings: offers to set a password', () => text().includes('Set a password'));
 check('settings: has a timezone field', () => text().includes('Timezone'));
