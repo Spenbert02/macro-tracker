@@ -21,7 +21,7 @@ export const FIREBASE_CONFIG = {
 
 /* Your Firebase UID. Until you set it, the app will sign you in and then show
  * you the UID to copy. Client-side guard only — the real gate is firestore.rules. */
-export const OWNER_UID = 'PASTE_YOUR_UID_HERE';
+export const OWNER_UID = '3Wg7kNQFM3OHSxNcw3vzIaBq5X42';
 
 /* Bump on EVERY deploy, together with VERSION in sw.js, or the service worker
  * will keep serving the old vendor bundles. */
